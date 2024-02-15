@@ -1,234 +1,212 @@
 # ToaruOS
 
-ToaruOS is a "complete" operating system for x86-64 PCs and experimental support for ARMv8.
-
-While many independent, hobby, and research OSes aim to experiment with new designs, ToaruOS is intended as an educational resource, providing a representative microcosm of functionality found in major desktop operating systems.
-
-The OS includes a kernel, bootloader, dynamic shared object linker, C standard library, its own composited windowing system, a dynamic bytecode-compiled programming language, advanced code editor, and dozens of other utilities and example applications.
-
-There are no external runtime dependencies and all required source code, totalling roughly 100k lines of (primarily) C, is included in this repository, save for [Kuroko](https://github.com/kuroko-lang/kuroko), which lives separately.
-
-![Screenshot](https://klange.dev/s/Screenshot%20from%202021-12-06%2011-38-12.png)
-*Demonstration of ToaruOS's UI and some applications.*
-
-## History
-
-> I have been working on ToaruOS for over a decade now, and my goals have changed over the years.
->
-> When I first started the project in December 2010, my aim was to "learn by doing" - studying Unix-like systems by making one from scratch.
-> I had been a contributor to Compiz, one of the first widely-used compositing window managers for X11, a few years prior, and somewhat naturally ToaruOS gained a GUI built on similar concepts early on.
->
-> For its original 1.0 release in 2015, ToaruOS was not the "completely from scratch" OS it has since become.
-> Newlib provided the libc, and the GUI was built on Cairo, libpng, and Freetype.
-> In the middle of 2018, I started a new project to replace these third-party components, which was eventually completed and merged to become ToaruOS 1.6.
->
-> Through out the project, ToaruOS has also attracted quite a few beginner OS developers who have tried to use it as a reference.
-> ToaruOS's kernel, however, was a source of personal embarrassment for me, and in April 2021, after a long hiatus, I began work on a new one.
-> The result was Misaka: a new 64-bit, SMP-enabled kernel. Misaka was merged in May and started the 1.99 series of beta releases leading up to ToaruOS 2.0.
-
-## Features
-
-- **Dynamically linked userspace** with shared libraries and `dlopen`.
-- **Composited graphical UI** with software acceleration and a late-2000s design inspiration.
-- **VM integration** for absolute mouse and automatic display sizing in VirtualBox and VMware Workstation.
-- **Unix-like terminal interface** including a feature-rich terminal emulator and several familiar utilities.
-- **Optional third-party ports** including GCC 10.3, Binutils, SDL1.2, Quake, and more.
-
-### Notable Components
-
-- **Misaka** (kernel), [kernel/](kernel/), a hybrid modular kernel, and the core of the operating system.
-- **Yutani** (window compositor), [apps/compositor.c](apps/compositor.c), manages window buffers, layout, and input routing.
-- **Bim** (text editor), [apps/bim.c](apps/bim.c), is a Vim-inspired editor with syntax highlighting.
-- **Terminal**, [apps/terminal.c](apps/terminal.c), xterm-esque terminal emulator with 24-bit color support.
-- **ld.so** (dynamic linker/loader), [linker/linker.c](linker/linker.c), loads dynamically-linked ELF binaries.
-- **Esh** (shell), [apps/esh.c](apps/esh.c), supports pipes, redirections, variables, etc.
-- **Kuroko** (interpreter), [kuroko/](https://kuroko-lang.github.io/), a dynamic bytecode-compiled programming language.
-
-## Current Goals
-
-The following projects are currently in progress:
-
-- **Rewrite the network stack** for greater throughput, stability, and server support.
-- **Improve SMP performance** with better scheduling and smarter userspace synchronization functions.
-- **Support more hardware** with new device drivers for AHCI, USB, virtio devices, etc.
-- **Bring back ports** from ToaruOS "Legacy", like muPDF and Mesa.
-- **Improve POSIX coverage** especially in regards to signals, synchronization primitives, as well as by providing more common utilities.
-- **Continue to improve the C library** which remains quite incomplete compared to Newlib and is a major source of issues with bringing back old ports.
-- **Replace third-party development tools** to get the OS to a state where it is self-hosting with just the addition of a C compiler.
-- **Implement a C compiler toolchain** in [toarucc](https://github.com/klange/toarucc).
-
-## Building / Installation
-
-### Building With Docker
-
-General users hoping to build ToaruOS from source are recommended to fork the repository on Github and make use of the Github CI pipeline.
-
-For those looking to build locally on an appropriately configured Linux host with Docker, a build container is available. The ToaruOS repository should be used as a bind mount at `/root/misaka` and `util/build-in-docker.sh` can be run within this container to complete the compilation process:
-
-    git clone https://github.com/klange/toaruos
-    cd toaruos
-    git submodule update --init kuroko
-    docker pull toaruos/build-tools:1.99.x
-    docker run -v `pwd`:/root/misaka -w /root/misaka -e LANG=C.UTF-8 -t toaruos/build-tools:1.99.x util/build-in-docker.sh
-
-After building like this, you can run the various utility targets (`make run`, etc.). Try `make shell` to run a ToaruOS shell using a serial port with QEMU.
-
-### Build Process Internals
-
-The `Makefile` uses a Kuroko tool, `auto-dep.krk`, to generate additional Makefiles for the userspace applications and libraries, automatically resolving dependencies based on `#include` directives.
-
-In an indeterminate order, the C library, kernel, userspace librares and applications are built, combined into a compressed archive for use as a ramdisk, and then packaged into an ISO9660 filesystem image.
-
-### Project Layout
-
-- **apps** - Userspace applications, all first-party.
-- **base** - Ramdisk root filesystem staging directory. Includes C headers in `base/usr/include`, as well as graphical resources for the compositor and window decorator.
-- **boot** - BIOS and EFI loader with interactive menus.
-- **build** - Auxiliary build scripts for platform ports.
-- **kernel** - The Misaka kernel.
-- **kuroko** - Submodule checkout of the Kuroko interpreter.
-- **lib** - Userspace libraries.
-- **libc** - C standard library implementation.
-- **linker** - Userspace dynamic linker/loader, implements shared library support.
-- **modules** - Loadable driver modules for the kernel.
-- **util** - Utility scripts, staging directory for the toolchain (binutils/gcc).
-- **.make** - Generated Makefiles.
-
-### Filesystem Layout
-
-The root filesystem is set up as follows:
-
-- `bin`: First-party applications.
-- `cdrom`: Mount point for the CD, if available.
-- `dev`: Virtual device directory, generated by the kernel.
-  - `net`: Network interface devices.
-  - `pex`: Packet Exchange hub, lists accessible IPC services.
-  - `pts`: PTY secondaries, endpoints for TTYs.
-- `etc`: Configuration files, startup scripts.
-- `home`: User directories.
-- `lib`: First-party libraries
-  - `kuroko`: Kuroko modules.
-- `mod`: Loadable kernel modules.
-- `proc`: Virtual files that present kernel state.
-  - `1`, etc.: Virtual files with status information for individual processes.
-- `src`: Source files, see "Project Layout" section above.
-- `tmp`: Mounted as a read/write tmpfs normally.
-- `usr`: Userspace resources
-  - `bin`: Third-party applications, normally empty until packages are installed.
-  - `include`: Header files, including potentially ones from third-party packages.
-  - `lib`: Third-party libraries. Should have `libgcc_s.so` by default.
-  - `share`: Various resources.
-    - `bim`: Syntax highlighting and themes for the text editor.
-    - `cursor`: Mouse cursor sprites.
-    - `fonts`: TrueType font files. Live CDs ship with Deja Vu Sans.
-    - `games`: Dumping ground for game-related resource files, like Doom wads.
-    - `help`: Documentation files for the Help Browser application.
-    - `icons`: PNG icons, divided into further directories by size.
-    - `ttk`: Spritesheet resources for the window decorator and widget library.
-    - `wallpapers`: JPEG wallpapers.
-- `var`: Runtime files, including package manager manifest cache, PID files, some lock files, etc.
-
-## Running ToaruOS
-
-### VirtualBox and VMware Workstation
-
-The best end-user experience with ToaruOS will be had in either of these virtual machines, as ToaruOS has support for their automatic display sizing and absolute mouse positioning.
-
-Set up a new VM for an "other" 64-bit guest, supply it with at least 1GiB of RAM, attach the CD image, remove or ignore any hard disks, and select an Intel Gigabit NIC. Two or more CPUs are recommended, as well.
-
-![VirtualBox screenshot](https://klange.dev/s/Screenshot%20from%202021-12-06%2011-39-27.png)
-*ToaruOS running in VirtualBox.*
-
-![VMware screenshot](https://klange.dev/s/Screenshot%20from%202021-12-06%2011-41-17.png)
-*ToaruOS running in VMware Workstation Player.*
-
-By default, the bootloader will pass a flag to the VirtualBox device driver to disable "Seamless" support as the implementation has a performance overhead. To enable Seamless mode, use the bootloader menu to check the "VirtualBox Seamless" option before booting. The menu also has options to disable automatic guest display sizing if you experience issues with this feature.
-
-### QEMU
-
-Most development of ToaruOS happens in QEMU, as it provides the most flexibility in hardware and the best debugging experience. A recommended QEMU command line in an Ubuntu 20.04 host is:
-
-```
-qemu-system-x86_64 -enable-kvm -m 1G -device AC97 -cdrom image.iso -smp 2
-```
-
-Replace `-enable-kvm` with `-accel hvm` or `-accel haxm` as appropriate on host platforms without KVM, or remove it to try under QEMU's TCG software emulation.
-
-Note that QEMU command line options are not stable and these flags may produce warnings in newer versions.
-
-The option `-M q35` will replace the PIIX chipset emulation with a newer one, which has the side effect of switching the IDE controller for a SATA one. This can result in faster boot times at the expense of ToaruOS not being able to read its own CD at runtime until I get around to finishing my AHCI driver.
-
-### Other
-
-ToaruOS has been successfully tested on real hardware. If the native BIOS or EFI loaders fail to function, try booting with Grub. ToaruOS complies with the "Multiboot" and "Multiboot 2" specs so it may be loaded with either the `multiboot` or `multiboot2` commands as follows:
-
-```
-multiboot2 /path/to/misaka-kernel root=/dev/ram0 migrate vid=auto start=live-session
+<div class="Box-sc-g0xbh4-0 bJMeLZ js-snippet-clipboard-copy-unpositioned" data-hpc="true"><article class="markdown-body entry-content container-lg" itemprop="text"><h1 tabindex="-1" dir="auto"><a id="user-content-toaruos" class="anchor" aria-hidden="true" tabindex="-1" href="#toaruos"><svg class="octicon octicon-link" viewBox="0 0 16 16" version="1.1" width="16" height="16" aria-hidden="true"><path d="m7.775 3.275 1.25-1.25a3.5 3.5 0 1 1 4.95 4.95l-2.5 2.5a3.5 3.5 0 0 1-4.95 0 .751.751 0 0 1 .018-1.042.751.751 0 0 1 1.042-.018 1.998 1.998 0 0 0 2.83 0l2.5-2.5a2.002 2.002 0 0 0-2.83-2.83l-1.25 1.25a.751.751 0 0 1-1.042-.018.751.751 0 0 1-.018-1.042Zm-4.69 9.64a1.998 1.998 0 0 0 2.83 0l1.25-1.25a.751.751 0 0 1 1.042.018.751.751 0 0 1 .018 1.042l-1.25 1.25a3.5 3.5 0 1 1-4.95-4.95l2.5-2.5a3.5 3.5 0 0 1 4.95 0 .751.751 0 0 1-.018 1.042.751.751 0 0 1-1.042.018 1.998 1.998 0 0 0-2.83 0l-2.5 2.5a1.998 1.998 0 0 0 0 2.83Z"></path></svg></a><font style="vertical-align: inherit;"><font style="vertical-align: inherit;">Toaru操作系统</font></font></h1>
+<p dir="auto"><font style="vertical-align: inherit;"><font style="vertical-align: inherit;">ToaruOS 是一个适用于 x86-64 PC 的“完整”操作系统，并且对 ARMv8 提供实验性支持。</font></font></p>
+<p dir="auto"><font style="vertical-align: inherit;"><font style="vertical-align: inherit;">虽然许多独立、业余爱好和研究操作系统旨在尝试新设计，但 ToaruOS 旨在作为一种教育资源，提供主要桌面操作系统中具有代表性的功能缩影。</font></font></p>
+<p dir="auto"><font style="vertical-align: inherit;"><font style="vertical-align: inherit;">该操作系统包括内核、引导加载程序、动态共享对象链接器、C 标准库、自己的复合窗口系统、动态字节码编译编程语言、高级代码编辑器以及数十个其他实用程序和示例应用程序。</font></font></p>
+<p dir="auto"><font style="vertical-align: inherit;"><font style="vertical-align: inherit;">没有外部运行时依赖项，所有必需的源代码（主要是 C 语言）总共大约 10 万行，都包含在此存储库中，除了单独存在的</font></font><a href="https://github.com/kuroko-lang/kuroko"><font style="vertical-align: inherit;"><font style="vertical-align: inherit;">Kuroko</font></font></a><font style="vertical-align: inherit;"><font style="vertical-align: inherit;">之外。</font></font></p>
+<p dir="auto"><a target="_blank" rel="noopener noreferrer nofollow" href="https://camo.githubusercontent.com/014a2d2567c44b76bc218fc69966930df3fcf80cf6b7a124feccacfc87e8dbca/68747470733a2f2f6b6c616e67652e6465762f732f53637265656e73686f7425323066726f6d253230323032312d31322d303625323031312d33382d31322e706e67"><img src="https://camo.githubusercontent.com/014a2d2567c44b76bc218fc69966930df3fcf80cf6b7a124feccacfc87e8dbca/68747470733a2f2f6b6c616e67652e6465762f732f53637265656e73686f7425323066726f6d253230323032312d31322d303625323031312d33382d31322e706e67" alt="截屏" data-canonical-src="https://klange.dev/s/Screenshot%20from%202021-12-06%2011-38-12.png" style="max-width: 100%;"></a>
+<em><font style="vertical-align: inherit;"><font style="vertical-align: inherit;">ToaruOS 的 UI 和一些应用程序的演示。</font></font></em></p>
+<h2 tabindex="-1" dir="auto"><a id="user-content-history" class="anchor" aria-hidden="true" tabindex="-1" href="#history"><svg class="octicon octicon-link" viewBox="0 0 16 16" version="1.1" width="16" height="16" aria-hidden="true"><path d="m7.775 3.275 1.25-1.25a3.5 3.5 0 1 1 4.95 4.95l-2.5 2.5a3.5 3.5 0 0 1-4.95 0 .751.751 0 0 1 .018-1.042.751.751 0 0 1 1.042-.018 1.998 1.998 0 0 0 2.83 0l2.5-2.5a2.002 2.002 0 0 0-2.83-2.83l-1.25 1.25a.751.751 0 0 1-1.042-.018.751.751 0 0 1-.018-1.042Zm-4.69 9.64a1.998 1.998 0 0 0 2.83 0l1.25-1.25a.751.751 0 0 1 1.042.018.751.751 0 0 1 .018 1.042l-1.25 1.25a3.5 3.5 0 1 1-4.95-4.95l2.5-2.5a3.5 3.5 0 0 1 4.95 0 .751.751 0 0 1-.018 1.042.751.751 0 0 1-1.042.018 1.998 1.998 0 0 0-2.83 0l-2.5 2.5a1.998 1.998 0 0 0 0 2.83Z"></path></svg></a><font style="vertical-align: inherit;"><font style="vertical-align: inherit;">历史</font></font></h2>
+<blockquote>
+<p dir="auto"><font style="vertical-align: inherit;"><font style="vertical-align: inherit;">我在 ToaruOS 上工作已有十多年了，这些年来我的目标也发生了变化。</font></font></p>
+<p dir="auto"><font style="vertical-align: inherit;"><font style="vertical-align: inherit;">当我在 2010 年 12 月第一次开始这个项目时，我的目标是“边做边学”——通过从头开始制作一个类 Unix 系统来研究它。几年前，我曾是 Compiz 的贡献者，Compiz 是第一个广泛使用的 X11 合成窗口管理器之一，ToaruOS 很自然地在早期就获得了基于类似概念的 GUI。</font></font></p>
+<p dir="auto"><font style="vertical-align: inherit;"><font style="vertical-align: inherit;">对于 2015 年最初的 1.0 版本来说，ToaruOS 并不是后来成为的“完全从头开始”的操作系统。 Newlib 提供了 libc，GUI 是基于 Cairo、libpng 和 Freetype 构建的。 2018年中旬，我开始了一个新项目来替换这些第三方组件，最终完成并合并成为ToaruOS 1.6。</font></font></p>
+<p dir="auto"><font style="vertical-align: inherit;"><font style="vertical-align: inherit;">在整个项目中，ToaruOS也吸引了相当多的初学者操作系统开发者尝试将其作为参考。然而，ToaruOS 的内核让我个人感到尴尬，在长时间的中断之后，2021 年 4 月，我开始开发一个新内核。结果就是 Misaka：一个新的 64 位、支持 SMP 的内核。 Misaka 于 5 月合并，并启动了 1.99 系列测试版，直至 ToaruOS 2.0。</font></font></p>
+</blockquote>
+<h2 tabindex="-1" dir="auto"><a id="user-content-features" class="anchor" aria-hidden="true" tabindex="-1" href="#features"><svg class="octicon octicon-link" viewBox="0 0 16 16" version="1.1" width="16" height="16" aria-hidden="true"><path d="m7.775 3.275 1.25-1.25a3.5 3.5 0 1 1 4.95 4.95l-2.5 2.5a3.5 3.5 0 0 1-4.95 0 .751.751 0 0 1 .018-1.042.751.751 0 0 1 1.042-.018 1.998 1.998 0 0 0 2.83 0l2.5-2.5a2.002 2.002 0 0 0-2.83-2.83l-1.25 1.25a.751.751 0 0 1-1.042-.018.751.751 0 0 1-.018-1.042Zm-4.69 9.64a1.998 1.998 0 0 0 2.83 0l1.25-1.25a.751.751 0 0 1 1.042.018.751.751 0 0 1 .018 1.042l-1.25 1.25a3.5 3.5 0 1 1-4.95-4.95l2.5-2.5a3.5 3.5 0 0 1 4.95 0 .751.751 0 0 1-.018 1.042.751.751 0 0 1-1.042.018 1.998 1.998 0 0 0-2.83 0l-2.5 2.5a1.998 1.998 0 0 0 0 2.83Z"></path></svg></a><font style="vertical-align: inherit;"><font style="vertical-align: inherit;">特征</font></font></h2>
+<ul dir="auto">
+<li><strong><font style="vertical-align: inherit;"><font style="vertical-align: inherit;">动态链接用户空间</font></font></strong><font style="vertical-align: inherit;"><font style="vertical-align: inherit;">与共享库和</font></font><code>dlopen</code><font style="vertical-align: inherit;"><font style="vertical-align: inherit;">.</font></font></li>
+<li><strong><font style="vertical-align: inherit;"></font></strong><font style="vertical-align: inherit;"><font style="vertical-align: inherit;">具有软件加速功能和 2000 年代末设计灵感的</font><strong><font style="vertical-align: inherit;">复合图形 UI 。</font></strong></font></li>
+<li><strong><font style="vertical-align: inherit;"><font style="vertical-align: inherit;">VirtualBox 和 VMware Workstation 中的虚拟机集成</font></font></strong><font style="vertical-align: inherit;"><font style="vertical-align: inherit;">可实现绝对鼠标和自动调整显示大小。</font></font></li>
+<li><strong><font style="vertical-align: inherit;"><font style="vertical-align: inherit;">类似 Unix 的终端界面，</font></font></strong><font style="vertical-align: inherit;"><font style="vertical-align: inherit;">包括功能丰富的终端仿真器和几个熟悉的实用程序。</font></font></li>
+<li><strong><font style="vertical-align: inherit;"><font style="vertical-align: inherit;">可选的第三方端口</font></font></strong><font style="vertical-align: inherit;"><font style="vertical-align: inherit;">包括 GCC 10.3、Binutils、SDL1.2、Quake 等。</font></font></li>
+</ul>
+<h3 tabindex="-1" dir="auto"><a id="user-content-notable-components" class="anchor" aria-hidden="true" tabindex="-1" href="#notable-components"><svg class="octicon octicon-link" viewBox="0 0 16 16" version="1.1" width="16" height="16" aria-hidden="true"><path d="m7.775 3.275 1.25-1.25a3.5 3.5 0 1 1 4.95 4.95l-2.5 2.5a3.5 3.5 0 0 1-4.95 0 .751.751 0 0 1 .018-1.042.751.751 0 0 1 1.042-.018 1.998 1.998 0 0 0 2.83 0l2.5-2.5a2.002 2.002 0 0 0-2.83-2.83l-1.25 1.25a.751.751 0 0 1-1.042-.018.751.751 0 0 1-.018-1.042Zm-4.69 9.64a1.998 1.998 0 0 0 2.83 0l1.25-1.25a.751.751 0 0 1 1.042.018.751.751 0 0 1 .018 1.042l-1.25 1.25a3.5 3.5 0 1 1-4.95-4.95l2.5-2.5a3.5 3.5 0 0 1 4.95 0 .751.751 0 0 1-.018 1.042.751.751 0 0 1-1.042.018 1.998 1.998 0 0 0-2.83 0l-2.5 2.5a1.998 1.998 0 0 0 0 2.83Z"></path></svg></a><font style="vertical-align: inherit;"><font style="vertical-align: inherit;">值得注意的组件</font></font></h3>
+<ul dir="auto">
+<li><strong><font style="vertical-align: inherit;"><font style="vertical-align: inherit;">Misaka</font></font></strong><font style="vertical-align: inherit;"><font style="vertical-align: inherit;">（内核），</font></font><a href="/klange/toaruos/blob/master/kernel"><font style="vertical-align: inherit;"><font style="vertical-align: inherit;">kernel/</font></font></a><font style="vertical-align: inherit;"><font style="vertical-align: inherit;">，混合模块化内核，操作系统的核心。</font></font></li>
+<li><strong><font style="vertical-align: inherit;"><font style="vertical-align: inherit;">Yutani</font></font></strong><font style="vertical-align: inherit;"><font style="vertical-align: inherit;">（窗口合成器），</font></font><a href="/klange/toaruos/blob/master/apps/compositor.c"><font style="vertical-align: inherit;"><font style="vertical-align: inherit;">apps/compositor.c</font></font></a><font style="vertical-align: inherit;"><font style="vertical-align: inherit;">，管理窗口缓冲区、布局和输入路由。</font></font></li>
+<li><strong><font style="vertical-align: inherit;"><font style="vertical-align: inherit;">Bim</font></font></strong><font style="vertical-align: inherit;"><font style="vertical-align: inherit;">（文本编辑器）</font></font><a href="/klange/toaruos/blob/master/apps/bim.c"><font style="vertical-align: inherit;"><font style="vertical-align: inherit;">apps/bim.c</font></font></a><font style="vertical-align: inherit;"><font style="vertical-align: inherit;">是一个受 Vim 启发的编辑器，具有语法突出显示功能。</font></font></li>
+<li><strong><font style="vertical-align: inherit;"><font style="vertical-align: inherit;">Terminal</font></font></strong><font style="vertical-align: inherit;"><font style="vertical-align: inherit;">、</font></font><a href="/klange/toaruos/blob/master/apps/terminal.c"><font style="vertical-align: inherit;"><font style="vertical-align: inherit;">apps/terminal.c</font></font></a><font style="vertical-align: inherit;"><font style="vertical-align: inherit;">、支持 24 位颜色的 xterm 式终端模拟器。</font></font></li>
+<li><strong><font style="vertical-align: inherit;"><font style="vertical-align: inherit;">ld.so</font></font></strong><font style="vertical-align: inherit;"><font style="vertical-align: inherit;">（动态链接器/加载器）、</font></font><a href="/klange/toaruos/blob/master/linker/linker.c"><font style="vertical-align: inherit;"><font style="vertical-align: inherit;">linker/linker.c</font></font></a><font style="vertical-align: inherit;"><font style="vertical-align: inherit;">加载动态链接的 ELF 二进制文件。</font></font></li>
+<li><strong><font style="vertical-align: inherit;"><font style="vertical-align: inherit;">Esh</font></font></strong><font style="vertical-align: inherit;"><font style="vertical-align: inherit;"> (shell)，</font></font><a href="/klange/toaruos/blob/master/apps/esh.c"><font style="vertical-align: inherit;"><font style="vertical-align: inherit;">apps/esh.c</font></font></a><font style="vertical-align: inherit;"><font style="vertical-align: inherit;">，支持管道、重定向、变量等。</font></font></li>
+<li><strong><font style="vertical-align: inherit;"><font style="vertical-align: inherit;">Kuroko</font></font></strong><font style="vertical-align: inherit;"><font style="vertical-align: inherit;">（解释器），</font></font><a href="https://kuroko-lang.github.io/" rel="nofollow"><font style="vertical-align: inherit;"><font style="vertical-align: inherit;">kuroko/</font></font></a><font style="vertical-align: inherit;"><font style="vertical-align: inherit;">，一种动态字节码编译的编程语言。</font></font></li>
+</ul>
+<h2 tabindex="-1" dir="auto"><a id="user-content-current-goals" class="anchor" aria-hidden="true" tabindex="-1" href="#current-goals"><svg class="octicon octicon-link" viewBox="0 0 16 16" version="1.1" width="16" height="16" aria-hidden="true"><path d="m7.775 3.275 1.25-1.25a3.5 3.5 0 1 1 4.95 4.95l-2.5 2.5a3.5 3.5 0 0 1-4.95 0 .751.751 0 0 1 .018-1.042.751.751 0 0 1 1.042-.018 1.998 1.998 0 0 0 2.83 0l2.5-2.5a2.002 2.002 0 0 0-2.83-2.83l-1.25 1.25a.751.751 0 0 1-1.042-.018.751.751 0 0 1-.018-1.042Zm-4.69 9.64a1.998 1.998 0 0 0 2.83 0l1.25-1.25a.751.751 0 0 1 1.042.018.751.751 0 0 1 .018 1.042l-1.25 1.25a3.5 3.5 0 1 1-4.95-4.95l2.5-2.5a3.5 3.5 0 0 1 4.95 0 .751.751 0 0 1-.018 1.042.751.751 0 0 1-1.042.018 1.998 1.998 0 0 0-2.83 0l-2.5 2.5a1.998 1.998 0 0 0 0 2.83Z"></path></svg></a><font style="vertical-align: inherit;"><font style="vertical-align: inherit;">目前的目标</font></font></h2>
+<p dir="auto"><font style="vertical-align: inherit;"><font style="vertical-align: inherit;">目前正在进行以下项目：</font></font></p>
+<ul dir="auto">
+<li><strong><font style="vertical-align: inherit;"><font style="vertical-align: inherit;">重写网络堆栈</font></font></strong><font style="vertical-align: inherit;"><font style="vertical-align: inherit;">以获得更高的吞吐量、稳定性和服务器支持。</font></font></li>
+<li><strong><font style="vertical-align: inherit;"><font style="vertical-align: inherit;">通过更好的调度和更智能的用户空间同步功能提高 SMP 性能</font></font></strong><font style="vertical-align: inherit;"><font style="vertical-align: inherit;">。</font></font></li>
+<li><strong><font style="vertical-align: inherit;"></font></strong><font style="vertical-align: inherit;"><font style="vertical-align: inherit;">通过适用于 AHCI、USB、virtio 设备等的新设备驱动程序</font><strong><font style="vertical-align: inherit;">支持更多硬件。</font></strong></font></li>
+<li><strong><font style="vertical-align: inherit;"><font style="vertical-align: inherit;">从 ToaruOS“旧版”恢复端口</font></font></strong><font style="vertical-align: inherit;"><font style="vertical-align: inherit;">，例如 muPDF 和 Mesa。</font></font></li>
+<li><strong><font style="vertical-align: inherit;"><font style="vertical-align: inherit;">提高 POSIX 覆盖范围</font></font></strong><font style="vertical-align: inherit;"><font style="vertical-align: inherit;">，特别是在信号、同步原语方面，以及提供更常见的实用程序。</font></font></li>
+<li><strong><font style="vertical-align: inherit;"><font style="vertical-align: inherit;">继续改进 C 库，</font></font></strong><font style="vertical-align: inherit;"><font style="vertical-align: inherit;">与 Newlib 相比，该库仍然相当不完整，并且是恢复旧端口问题的主要根源。</font></font></li>
+<li><strong><font style="vertical-align: inherit;"><font style="vertical-align: inherit;">替换第三方开发工具，</font></font></strong><font style="vertical-align: inherit;"><font style="vertical-align: inherit;">只需添加 C 编译器即可使操作系统达到自托管状态。</font></font></li>
+<li><strong><font style="vertical-align: inherit;"></font></strong><font style="vertical-align: inherit;"><font style="vertical-align: inherit;">在</font></font><a href="https://github.com/klange/toarucc"><font style="vertical-align: inherit;"><font style="vertical-align: inherit;">toarucc中</font></font></a><font style="vertical-align: inherit;"><strong><font style="vertical-align: inherit;">实现 C 编译器工具链</font></strong><font style="vertical-align: inherit;">。</font></font></li>
+</ul>
+<h2 tabindex="-1" dir="auto"><a id="user-content-building--installation" class="anchor" aria-hidden="true" tabindex="-1" href="#building--installation"><svg class="octicon octicon-link" viewBox="0 0 16 16" version="1.1" width="16" height="16" aria-hidden="true"><path d="m7.775 3.275 1.25-1.25a3.5 3.5 0 1 1 4.95 4.95l-2.5 2.5a3.5 3.5 0 0 1-4.95 0 .751.751 0 0 1 .018-1.042.751.751 0 0 1 1.042-.018 1.998 1.998 0 0 0 2.83 0l2.5-2.5a2.002 2.002 0 0 0-2.83-2.83l-1.25 1.25a.751.751 0 0 1-1.042-.018.751.751 0 0 1-.018-1.042Zm-4.69 9.64a1.998 1.998 0 0 0 2.83 0l1.25-1.25a.751.751 0 0 1 1.042.018.751.751 0 0 1 .018 1.042l-1.25 1.25a3.5 3.5 0 1 1-4.95-4.95l2.5-2.5a3.5 3.5 0 0 1 4.95 0 .751.751 0 0 1-.018 1.042.751.751 0 0 1-1.042.018 1.998 1.998 0 0 0-2.83 0l-2.5 2.5a1.998 1.998 0 0 0 0 2.83Z"></path></svg></a><font style="vertical-align: inherit;"><font style="vertical-align: inherit;">建筑/安装</font></font></h2>
+<h3 tabindex="-1" dir="auto"><a id="user-content-building-with-docker" class="anchor" aria-hidden="true" tabindex="-1" href="#building-with-docker"><svg class="octicon octicon-link" viewBox="0 0 16 16" version="1.1" width="16" height="16" aria-hidden="true"><path d="m7.775 3.275 1.25-1.25a3.5 3.5 0 1 1 4.95 4.95l-2.5 2.5a3.5 3.5 0 0 1-4.95 0 .751.751 0 0 1 .018-1.042.751.751 0 0 1 1.042-.018 1.998 1.998 0 0 0 2.83 0l2.5-2.5a2.002 2.002 0 0 0-2.83-2.83l-1.25 1.25a.751.751 0 0 1-1.042-.018.751.751 0 0 1-.018-1.042Zm-4.69 9.64a1.998 1.998 0 0 0 2.83 0l1.25-1.25a.751.751 0 0 1 1.042.018.751.751 0 0 1 .018 1.042l-1.25 1.25a3.5 3.5 0 1 1-4.95-4.95l2.5-2.5a3.5 3.5 0 0 1 4.95 0 .751.751 0 0 1-.018 1.042.751.751 0 0 1-1.042.018 1.998 1.998 0 0 0-2.83 0l-2.5 2.5a1.998 1.998 0 0 0 0 2.83Z"></path></svg></a><font style="vertical-align: inherit;"><font style="vertical-align: inherit;">使用 Docker 构建</font></font></h3>
+<p dir="auto"><font style="vertical-align: inherit;"><font style="vertical-align: inherit;">建议希望从源代码构建 ToaruOS 的一般用户在 Github 上分叉存储库并使用 Github CI 管道。</font></font></p>
+<p dir="auto"><font style="vertical-align: inherit;"><font style="vertical-align: inherit;">对于那些希望使用 Docker 在适当配置的 Linux 主机上进行本地构建的人，可以使用构建容器。 ToaruOS 存储库应用作绑定安装</font></font><code>/root/misaka</code><font style="vertical-align: inherit;"><font style="vertical-align: inherit;">，并</font></font><code>util/build-in-docker.sh</code><font style="vertical-align: inherit;"><font style="vertical-align: inherit;">可以在此容器中运行以完成编译过程：</font></font></p>
+<div class="snippet-clipboard-content notranslate position-relative overflow-auto"><pre class="notranslate"><code>git clone https://github.com/klange/toaruos
+cd toaruos
+git submodule update --init kuroko
+docker pull toaruos/build-tools:1.99.x
+docker run -v `pwd`:/root/misaka -w /root/misaka -e LANG=C.UTF-8 -t toaruos/build-tools:1.99.x util/build-in-docker.sh
+</code></pre><div class="zeroclipboard-container">
+    <clipboard-copy aria-label="Copy" class="ClipboardButton btn btn-invisible js-clipboard-copy m-2 p-0 tooltipped-no-delay d-flex flex-justify-center flex-items-center" data-copy-feedback="Copied!" data-tooltip-direction="w" value="git clone https://github.com/klange/toaruos
+cd toaruos
+git submodule update --init kuroko
+docker pull toaruos/build-tools:1.99.x
+docker run -v `pwd`:/root/misaka -w /root/misaka -e LANG=C.UTF-8 -t toaruos/build-tools:1.99.x util/build-in-docker.sh" tabindex="0" role="button">
+      <svg aria-hidden="true" height="16" viewBox="0 0 16 16" version="1.1" width="16" data-view-component="true" class="octicon octicon-copy js-clipboard-copy-icon">
+    <path d="M0 6.75C0 5.784.784 5 1.75 5h1.5a.75.75 0 0 1 0 1.5h-1.5a.25.25 0 0 0-.25.25v7.5c0 .138.112.25.25.25h7.5a.25.25 0 0 0 .25-.25v-1.5a.75.75 0 0 1 1.5 0v1.5A1.75 1.75 0 0 1 9.25 16h-7.5A1.75 1.75 0 0 1 0 14.25Z"></path><path d="M5 1.75C5 .784 5.784 0 6.75 0h7.5C15.216 0 16 .784 16 1.75v7.5A1.75 1.75 0 0 1 14.25 11h-7.5A1.75 1.75 0 0 1 5 9.25Zm1.75-.25a.25.25 0 0 0-.25.25v7.5c0 .138.112.25.25.25h7.5a.25.25 0 0 0 .25-.25v-7.5a.25.25 0 0 0-.25-.25Z"></path>
+</svg>
+      <svg aria-hidden="true" height="16" viewBox="0 0 16 16" version="1.1" width="16" data-view-component="true" class="octicon octicon-check js-clipboard-check-icon color-fg-success d-none">
+    <path d="M13.78 4.22a.75.75 0 0 1 0 1.06l-7.25 7.25a.75.75 0 0 1-1.06 0L2.22 9.28a.751.751 0 0 1 .018-1.042.751.751 0 0 1 1.042-.018L6 10.94l6.72-6.72a.75.75 0 0 1 1.06 0Z"></path>
+</svg>
+    </clipboard-copy>
+  </div></div>
+<p dir="auto"><font style="vertical-align: inherit;"><font style="vertical-align: inherit;">像这样构建之后，您可以运行各种实用程序目标（</font></font><code>make run</code><font style="vertical-align: inherit;"><font style="vertical-align: inherit;">等）。尝试</font></font><code>make shell</code><font style="vertical-align: inherit;"><font style="vertical-align: inherit;">使用带有 QEMU 的串行端口运行 ToaruOS shell。</font></font></p>
+<h3 tabindex="-1" dir="auto"><a id="user-content-build-process-internals" class="anchor" aria-hidden="true" tabindex="-1" href="#build-process-internals"><svg class="octicon octicon-link" viewBox="0 0 16 16" version="1.1" width="16" height="16" aria-hidden="true"><path d="m7.775 3.275 1.25-1.25a3.5 3.5 0 1 1 4.95 4.95l-2.5 2.5a3.5 3.5 0 0 1-4.95 0 .751.751 0 0 1 .018-1.042.751.751 0 0 1 1.042-.018 1.998 1.998 0 0 0 2.83 0l2.5-2.5a2.002 2.002 0 0 0-2.83-2.83l-1.25 1.25a.751.751 0 0 1-1.042-.018.751.751 0 0 1-.018-1.042Zm-4.69 9.64a1.998 1.998 0 0 0 2.83 0l1.25-1.25a.751.751 0 0 1 1.042.018.751.751 0 0 1 .018 1.042l-1.25 1.25a3.5 3.5 0 1 1-4.95-4.95l2.5-2.5a3.5 3.5 0 0 1 4.95 0 .751.751 0 0 1-.018 1.042.751.751 0 0 1-1.042.018 1.998 1.998 0 0 0-2.83 0l-2.5 2.5a1.998 1.998 0 0 0 0 2.83Z"></path></svg></a><font style="vertical-align: inherit;"><font style="vertical-align: inherit;">构建流程内部结构</font></font></h3>
+<p dir="auto"><font style="vertical-align: inherit;"><font style="vertical-align: inherit;">使用</font></font><code>Makefile</code><font style="vertical-align: inherit;"><font style="vertical-align: inherit;">Kuroko 工具</font></font><code>auto-dep.krk</code><font style="vertical-align: inherit;"><font style="vertical-align: inherit;">为用户空间应用程序和库生成附加 Makefile，根据</font></font><code>#include</code><font style="vertical-align: inherit;"><font style="vertical-align: inherit;">指令自动解决依赖关系。</font></font></p>
+<p dir="auto"><font style="vertical-align: inherit;"><font style="vertical-align: inherit;">按照不确定的顺序，构建 C 库、内核、用户空间库和应用程序，组合成压缩存档以用作 ramdisk，然后打包到 ISO9660 文件系统映像中。</font></font></p>
+<h3 tabindex="-1" dir="auto"><a id="user-content-project-layout" class="anchor" aria-hidden="true" tabindex="-1" href="#project-layout"><svg class="octicon octicon-link" viewBox="0 0 16 16" version="1.1" width="16" height="16" aria-hidden="true"><path d="m7.775 3.275 1.25-1.25a3.5 3.5 0 1 1 4.95 4.95l-2.5 2.5a3.5 3.5 0 0 1-4.95 0 .751.751 0 0 1 .018-1.042.751.751 0 0 1 1.042-.018 1.998 1.998 0 0 0 2.83 0l2.5-2.5a2.002 2.002 0 0 0-2.83-2.83l-1.25 1.25a.751.751 0 0 1-1.042-.018.751.751 0 0 1-.018-1.042Zm-4.69 9.64a1.998 1.998 0 0 0 2.83 0l1.25-1.25a.751.751 0 0 1 1.042.018.751.751 0 0 1 .018 1.042l-1.25 1.25a3.5 3.5 0 1 1-4.95-4.95l2.5-2.5a3.5 3.5 0 0 1 4.95 0 .751.751 0 0 1-.018 1.042.751.751 0 0 1-1.042.018 1.998 1.998 0 0 0-2.83 0l-2.5 2.5a1.998 1.998 0 0 0 0 2.83Z"></path></svg></a><font style="vertical-align: inherit;"><font style="vertical-align: inherit;">项目布局</font></font></h3>
+<ul dir="auto">
+<li><strong><font style="vertical-align: inherit;"><font style="vertical-align: inherit;">apps</font></font></strong><font style="vertical-align: inherit;"><font style="vertical-align: inherit;"> - 用户空间应用程序，所有第一方。</font></font></li>
+<li><strong><font style="vertical-align: inherit;"><font style="vertical-align: inherit;">base</font></font></strong><font style="vertical-align: inherit;"><font style="vertical-align: inherit;"> - Ramdisk 根文件系统暂存目录。包括 中的 C 标头</font></font><code>base/usr/include</code><font style="vertical-align: inherit;"><font style="vertical-align: inherit;">，以及合成器和窗口装饰器的图形资源。</font></font></li>
+<li><strong><font style="vertical-align: inherit;"><font style="vertical-align: inherit;">boot</font></font></strong><font style="vertical-align: inherit;"><font style="vertical-align: inherit;"> - BIOS 和 EFI 加载程序，带有交互式菜单。</font></font></li>
+<li><strong><font style="vertical-align: inherit;"><font style="vertical-align: inherit;">build</font></font></strong><font style="vertical-align: inherit;"><font style="vertical-align: inherit;"> - 平台端口的辅助构建脚本。</font></font></li>
+<li><strong><font style="vertical-align: inherit;"><font style="vertical-align: inherit;">kernel</font></font></strong><font style="vertical-align: inherit;"><font style="vertical-align: inherit;"> - Misaka 内核。</font></font></li>
+<li><strong><font style="vertical-align: inherit;"><font style="vertical-align: inherit;">kuroko</font></font></strong><font style="vertical-align: inherit;"><font style="vertical-align: inherit;"> - Kuroko 解释器的子模块签出。</font></font></li>
+<li><strong><font style="vertical-align: inherit;"><font style="vertical-align: inherit;">lib</font></font></strong><font style="vertical-align: inherit;"><font style="vertical-align: inherit;"> - 用户空间库。</font></font></li>
+<li><strong><font style="vertical-align: inherit;"><font style="vertical-align: inherit;">libc</font></font></strong><font style="vertical-align: inherit;"><font style="vertical-align: inherit;"> - C 标准库实现。</font></font></li>
+<li><strong><font style="vertical-align: inherit;"><font style="vertical-align: inherit;">linker</font></font></strong><font style="vertical-align: inherit;"><font style="vertical-align: inherit;"> - 用户空间动态链接器/加载器，实现共享库支持。</font></font></li>
+<li><strong><font style="vertical-align: inherit;"><font style="vertical-align: inherit;">模块</font></font></strong><font style="vertical-align: inherit;"><font style="vertical-align: inherit;">- 内核的可加载驱动程序模块。</font></font></li>
+<li><strong><font style="vertical-align: inherit;"><font style="vertical-align: inherit;">util</font></font></strong><font style="vertical-align: inherit;"><font style="vertical-align: inherit;"> - 实用程序脚本，工具链的暂存目录 (binutils/gcc)。</font></font></li>
+<li><strong><font style="vertical-align: inherit;"><font style="vertical-align: inherit;">.make</font></font></strong><font style="vertical-align: inherit;"><font style="vertical-align: inherit;"> - 生成的 Makefile。</font></font></li>
+</ul>
+<h3 tabindex="-1" dir="auto"><a id="user-content-filesystem-layout" class="anchor" aria-hidden="true" tabindex="-1" href="#filesystem-layout"><svg class="octicon octicon-link" viewBox="0 0 16 16" version="1.1" width="16" height="16" aria-hidden="true"><path d="m7.775 3.275 1.25-1.25a3.5 3.5 0 1 1 4.95 4.95l-2.5 2.5a3.5 3.5 0 0 1-4.95 0 .751.751 0 0 1 .018-1.042.751.751 0 0 1 1.042-.018 1.998 1.998 0 0 0 2.83 0l2.5-2.5a2.002 2.002 0 0 0-2.83-2.83l-1.25 1.25a.751.751 0 0 1-1.042-.018.751.751 0 0 1-.018-1.042Zm-4.69 9.64a1.998 1.998 0 0 0 2.83 0l1.25-1.25a.751.751 0 0 1 1.042.018.751.751 0 0 1 .018 1.042l-1.25 1.25a3.5 3.5 0 1 1-4.95-4.95l2.5-2.5a3.5 3.5 0 0 1 4.95 0 .751.751 0 0 1-.018 1.042.751.751 0 0 1-1.042.018 1.998 1.998 0 0 0-2.83 0l-2.5 2.5a1.998 1.998 0 0 0 0 2.83Z"></path></svg></a><font style="vertical-align: inherit;"><font style="vertical-align: inherit;">文件系统布局</font></font></h3>
+<p dir="auto"><font style="vertical-align: inherit;"><font style="vertical-align: inherit;">根文件系统设置如下：</font></font></p>
+<ul dir="auto">
+<li><code>bin</code><font style="vertical-align: inherit;"><font style="vertical-align: inherit;">：第一方应用程序。</font></font></li>
+<li><code>cdrom</code><font style="vertical-align: inherit;"><font style="vertical-align: inherit;">：CD 的安装点（如果有）。</font></font></li>
+<li><code>dev</code><font style="vertical-align: inherit;"><font style="vertical-align: inherit;">：虚拟设备目录，由内核生成。
+</font></font><ul dir="auto">
+<li><code>net</code><font style="vertical-align: inherit;"><font style="vertical-align: inherit;">：网络接口设备。</font></font></li>
+<li><code>pex</code><font style="vertical-align: inherit;"><font style="vertical-align: inherit;">：数据包交换中心，列出可访问的 IPC 服务。</font></font></li>
+<li><code>pts</code><font style="vertical-align: inherit;"><font style="vertical-align: inherit;">：PTY 辅助节点，TTY 端点。</font></font></li>
+</ul>
+</li>
+<li><code>etc</code><font style="vertical-align: inherit;"><font style="vertical-align: inherit;">：配置文件、启动脚本。</font></font></li>
+<li><code>home</code><font style="vertical-align: inherit;"><font style="vertical-align: inherit;">：用户目录。</font></font></li>
+<li><code>lib</code><font style="vertical-align: inherit;"><font style="vertical-align: inherit;">：第一方库
+</font></font><ul dir="auto">
+<li><code>kuroko</code><font style="vertical-align: inherit;"><font style="vertical-align: inherit;">：黑子模块。</font></font></li>
+</ul>
+</li>
+<li><code>mod</code><font style="vertical-align: inherit;"><font style="vertical-align: inherit;">：可加载的内核模块。</font></font></li>
+<li><code>proc</code><font style="vertical-align: inherit;"><font style="vertical-align: inherit;">：呈现内核状态的虚拟文件。
+</font></font><ul dir="auto">
+<li><code>1</code><font style="vertical-align: inherit;"><font style="vertical-align: inherit;">等：包含各个进程状态信息的虚拟文件。</font></font></li>
+</ul>
+</li>
+<li><code>src</code><font style="vertical-align: inherit;"><font style="vertical-align: inherit;">：源文件，请参阅上面的“项目布局”部分。</font></font></li>
+<li><code>tmp</code><font style="vertical-align: inherit;"><font style="vertical-align: inherit;">：正常安装为读/写 tmpfs。</font></font></li>
+<li><code>usr</code><font style="vertical-align: inherit;"><font style="vertical-align: inherit;">：用户空间资源
+</font></font><ul dir="auto">
+<li><code>bin</code><font style="vertical-align: inherit;"><font style="vertical-align: inherit;">：第三方应用程序，在安装软件包之前通常为空。</font></font></li>
+<li><code>include</code><font style="vertical-align: inherit;"><font style="vertical-align: inherit;">：头文件，包括可能来自第三方包的头文件。</font></font></li>
+<li><code>lib</code><font style="vertical-align: inherit;"><font style="vertical-align: inherit;">：第三方库。</font></font><code>libgcc_s.so</code><font style="vertical-align: inherit;"><font style="vertical-align: inherit;">默认</font><font style="vertical-align: inherit;">应该有。</font></font></li>
+<li><code>share</code><font style="vertical-align: inherit;"><font style="vertical-align: inherit;">: 各种资源。
+</font></font><ul dir="auto">
+<li><code>bim</code><font style="vertical-align: inherit;"><font style="vertical-align: inherit;">：文本编辑器的语法突出显示和主题。</font></font></li>
+<li><code>cursor</code><font style="vertical-align: inherit;"><font style="vertical-align: inherit;">：鼠标光标精灵。</font></font></li>
+<li><code>fonts</code><font style="vertical-align: inherit;"><font style="vertical-align: inherit;">：TrueType 字体文件。 Live CD 附带 Deja Vu Sans。</font></font></li>
+<li><code>games</code><font style="vertical-align: inherit;"><font style="vertical-align: inherit;">：与游戏相关的资源文件的转储场，例如 Doom wads。</font></font></li>
+<li><code>help</code><font style="vertical-align: inherit;"><font style="vertical-align: inherit;">：帮助浏览器应用程序的文档文件。</font></font></li>
+<li><code>icons</code><font style="vertical-align: inherit;"><font style="vertical-align: inherit;">：PNG图标，按大小分为进一步的目录。</font></font></li>
+<li><code>ttk</code><font style="vertical-align: inherit;"><font style="vertical-align: inherit;">：窗口装饰器和小部件库的 Spritesheet 资源。</font></font></li>
+<li><code>wallpapers</code><font style="vertical-align: inherit;"><font style="vertical-align: inherit;">：JPEG 壁纸。</font></font></li>
+</ul>
+</li>
+</ul>
+</li>
+<li><code>var</code><font style="vertical-align: inherit;"><font style="vertical-align: inherit;">：运行时文件，包括包管理器清单缓存、PID文件、一些锁定文件等。</font></font></li>
+</ul>
+<h2 tabindex="-1" dir="auto"><a id="user-content-running-toaruos" class="anchor" aria-hidden="true" tabindex="-1" href="#running-toaruos"><svg class="octicon octicon-link" viewBox="0 0 16 16" version="1.1" width="16" height="16" aria-hidden="true"><path d="m7.775 3.275 1.25-1.25a3.5 3.5 0 1 1 4.95 4.95l-2.5 2.5a3.5 3.5 0 0 1-4.95 0 .751.751 0 0 1 .018-1.042.751.751 0 0 1 1.042-.018 1.998 1.998 0 0 0 2.83 0l2.5-2.5a2.002 2.002 0 0 0-2.83-2.83l-1.25 1.25a.751.751 0 0 1-1.042-.018.751.751 0 0 1-.018-1.042Zm-4.69 9.64a1.998 1.998 0 0 0 2.83 0l1.25-1.25a.751.751 0 0 1 1.042.018.751.751 0 0 1 .018 1.042l-1.25 1.25a3.5 3.5 0 1 1-4.95-4.95l2.5-2.5a3.5 3.5 0 0 1 4.95 0 .751.751 0 0 1-.018 1.042.751.751 0 0 1-1.042.018 1.998 1.998 0 0 0-2.83 0l-2.5 2.5a1.998 1.998 0 0 0 0 2.83Z"></path></svg></a><font style="vertical-align: inherit;"><font style="vertical-align: inherit;">运行ToaruOS</font></font></h2>
+<h3 tabindex="-1" dir="auto"><a id="user-content-virtualbox-and-vmware-workstation" class="anchor" aria-hidden="true" tabindex="-1" href="#virtualbox-and-vmware-workstation"><svg class="octicon octicon-link" viewBox="0 0 16 16" version="1.1" width="16" height="16" aria-hidden="true"><path d="m7.775 3.275 1.25-1.25a3.5 3.5 0 1 1 4.95 4.95l-2.5 2.5a3.5 3.5 0 0 1-4.95 0 .751.751 0 0 1 .018-1.042.751.751 0 0 1 1.042-.018 1.998 1.998 0 0 0 2.83 0l2.5-2.5a2.002 2.002 0 0 0-2.83-2.83l-1.25 1.25a.751.751 0 0 1-1.042-.018.751.751 0 0 1-.018-1.042Zm-4.69 9.64a1.998 1.998 0 0 0 2.83 0l1.25-1.25a.751.751 0 0 1 1.042.018.751.751 0 0 1 .018 1.042l-1.25 1.25a3.5 3.5 0 1 1-4.95-4.95l2.5-2.5a3.5 3.5 0 0 1 4.95 0 .751.751 0 0 1-.018 1.042.751.751 0 0 1-1.042.018 1.998 1.998 0 0 0-2.83 0l-2.5 2.5a1.998 1.998 0 0 0 0 2.83Z"></path></svg></a><font style="vertical-align: inherit;"><font style="vertical-align: inherit;">VirtualBox 和 VMware 工作站</font></font></h3>
+<p dir="auto"><font style="vertical-align: inherit;"><font style="vertical-align: inherit;">ToaruOS 的最佳最终用户体验将在这两个虚拟机中获得，因为 ToaruOS 支持自动调整显示大小和绝对鼠标定位。</font></font></p>
+<p dir="auto"><font style="vertical-align: inherit;"><font style="vertical-align: inherit;">为“其他”64 位来宾设置新的 VM，为其提供至少 1GiB 的 RAM，附加 CD 映像，删除或忽略任何硬盘，然后选择 Intel 千兆位 NIC。还建议使用两个或更多 CPU。</font></font></p>
+<p dir="auto"><a target="_blank" rel="noopener noreferrer nofollow" href="https://camo.githubusercontent.com/afea9a6effd64ec98c63400c73c1d1771d14bcf113d6ec3c68483a4d41c3de6e/68747470733a2f2f6b6c616e67652e6465762f732f53637265656e73686f7425323066726f6d253230323032312d31322d303625323031312d33392d32372e706e67"><img src="https://camo.githubusercontent.com/afea9a6effd64ec98c63400c73c1d1771d14bcf113d6ec3c68483a4d41c3de6e/68747470733a2f2f6b6c616e67652e6465762f732f53637265656e73686f7425323066726f6d253230323032312d31322d303625323031312d33392d32372e706e67" alt="VirtualBox 截图" data-canonical-src="https://klange.dev/s/Screenshot%20from%202021-12-06%2011-39-27.png" style="max-width: 100%;"></a>
+<em><font style="vertical-align: inherit;"><font style="vertical-align: inherit;">ToaruOS 在 VirtualBox 中运行。</font></font></em></p>
+<p dir="auto"><a target="_blank" rel="noopener noreferrer nofollow" href="https://camo.githubusercontent.com/44c81ea4beefc69ff2125ff2fb01582cf15c3bd837814262b326811c5f283396/68747470733a2f2f6b6c616e67652e6465762f732f53637265656e73686f7425323066726f6d253230323032312d31322d303625323031312d34312d31372e706e67"><img src="https://camo.githubusercontent.com/44c81ea4beefc69ff2125ff2fb01582cf15c3bd837814262b326811c5f283396/68747470733a2f2f6b6c616e67652e6465762f732f53637265656e73686f7425323066726f6d253230323032312d31322d303625323031312d34312d31372e706e67" alt="VMware 截图" data-canonical-src="https://klange.dev/s/Screenshot%20from%202021-12-06%2011-41-17.png" style="max-width: 100%;"></a>
+<em><font style="vertical-align: inherit;"><font style="vertical-align: inherit;">ToaruOS 在 VMware Workstation Player 中运行。</font></font></em></p>
+<p dir="auto"><font style="vertical-align: inherit;"><font style="vertical-align: inherit;">默认情况下，引导加载程序将向 VirtualBox 设备驱动程序传递一个标志以禁用“无缝”支持，因为该实现会产生性能开销。要启用无缝模式，请在启动前使用引导加载程序菜单选中“VirtualBox Seamless”选项。如果您在使用此功能时遇到问题，该菜单还提供禁用自动访客显示大小调整的选项。</font></font></p>
+<h3 tabindex="-1" dir="auto"><a id="user-content-qemu" class="anchor" aria-hidden="true" tabindex="-1" href="#qemu"><svg class="octicon octicon-link" viewBox="0 0 16 16" version="1.1" width="16" height="16" aria-hidden="true"><path d="m7.775 3.275 1.25-1.25a3.5 3.5 0 1 1 4.95 4.95l-2.5 2.5a3.5 3.5 0 0 1-4.95 0 .751.751 0 0 1 .018-1.042.751.751 0 0 1 1.042-.018 1.998 1.998 0 0 0 2.83 0l2.5-2.5a2.002 2.002 0 0 0-2.83-2.83l-1.25 1.25a.751.751 0 0 1-1.042-.018.751.751 0 0 1-.018-1.042Zm-4.69 9.64a1.998 1.998 0 0 0 2.83 0l1.25-1.25a.751.751 0 0 1 1.042.018.751.751 0 0 1 .018 1.042l-1.25 1.25a3.5 3.5 0 1 1-4.95-4.95l2.5-2.5a3.5 3.5 0 0 1 4.95 0 .751.751 0 0 1-.018 1.042.751.751 0 0 1-1.042.018 1.998 1.998 0 0 0-2.83 0l-2.5 2.5a1.998 1.998 0 0 0 0 2.83Z"></path></svg></a><font style="vertical-align: inherit;"><font style="vertical-align: inherit;">QEMU</font></font></h3>
+<p dir="auto"><font style="vertical-align: inherit;"><font style="vertical-align: inherit;">ToaruOS 的大部分开发都在 QEMU 中进行，因为它提供了最大的硬件灵活性和最佳的调试体验。 Ubuntu 20.04 主机中推荐的 QEMU 命令行是：</font></font></p>
+<div class="snippet-clipboard-content notranslate position-relative overflow-auto"><pre class="notranslate"><code>qemu-system-x86_64 -enable-kvm -m 1G -device AC97 -cdrom image.iso -smp 2
+</code></pre><div class="zeroclipboard-container">
+    <clipboard-copy aria-label="Copy" class="ClipboardButton btn btn-invisible js-clipboard-copy m-2 p-0 tooltipped-no-delay d-flex flex-justify-center flex-items-center" data-copy-feedback="Copied!" data-tooltip-direction="w" value="qemu-system-x86_64 -enable-kvm -m 1G -device AC97 -cdrom image.iso -smp 2" tabindex="0" role="button">
+      <svg aria-hidden="true" height="16" viewBox="0 0 16 16" version="1.1" width="16" data-view-component="true" class="octicon octicon-copy js-clipboard-copy-icon">
+    <path d="M0 6.75C0 5.784.784 5 1.75 5h1.5a.75.75 0 0 1 0 1.5h-1.5a.25.25 0 0 0-.25.25v7.5c0 .138.112.25.25.25h7.5a.25.25 0 0 0 .25-.25v-1.5a.75.75 0 0 1 1.5 0v1.5A1.75 1.75 0 0 1 9.25 16h-7.5A1.75 1.75 0 0 1 0 14.25Z"></path><path d="M5 1.75C5 .784 5.784 0 6.75 0h7.5C15.216 0 16 .784 16 1.75v7.5A1.75 1.75 0 0 1 14.25 11h-7.5A1.75 1.75 0 0 1 5 9.25Zm1.75-.25a.25.25 0 0 0-.25.25v7.5c0 .138.112.25.25.25h7.5a.25.25 0 0 0 .25-.25v-7.5a.25.25 0 0 0-.25-.25Z"></path>
+</svg>
+      <svg aria-hidden="true" height="16" viewBox="0 0 16 16" version="1.1" width="16" data-view-component="true" class="octicon octicon-check js-clipboard-check-icon color-fg-success d-none">
+    <path d="M13.78 4.22a.75.75 0 0 1 0 1.06l-7.25 7.25a.75.75 0 0 1-1.06 0L2.22 9.28a.751.751 0 0 1 .018-1.042.751.751 0 0 1 1.042-.018L6 10.94l6.72-6.72a.75.75 0 0 1 1.06 0Z"></path>
+</svg>
+    </clipboard-copy>
+  </div></div>
+<p dir="auto"><font style="vertical-align: inherit;"><font style="vertical-align: inherit;">在没有 KVM 的主机平台上根据需要</font><font style="vertical-align: inherit;">替换</font></font><code>-enable-kvm</code><font style="vertical-align: inherit;"><font style="vertical-align: inherit;">为</font></font><code>-accel hvm</code><font style="vertical-align: inherit;"><font style="vertical-align: inherit;">或，或者将其删除以在 QEMU 的 TCG 软件模拟下进行尝试。</font></font><code>-accel haxm</code><font style="vertical-align: inherit;"></font></p>
+<p dir="auto"><font style="vertical-align: inherit;"><font style="vertical-align: inherit;">请注意，QEMU 命令行选项不稳定，这些标志可能会在较新版本中产生警告。</font></font></p>
+<p dir="auto"><font style="vertical-align: inherit;"><font style="vertical-align: inherit;">该选项</font></font><code>-M q35</code><font style="vertical-align: inherit;"><font style="vertical-align: inherit;">将用更新的芯片组模拟取代 PIIX 芯片组模拟，这会产生将 IDE 控制器切换为 SATA 控制器的副作用。这可能会导致更快的启动时间，但代价是 ToaruOS 无法在运行时读取自己的 CD，直到我完成 AHCI 驱动程序。</font></font></p>
+<h3 tabindex="-1" dir="auto"><a id="user-content-other" class="anchor" aria-hidden="true" tabindex="-1" href="#other"><svg class="octicon octicon-link" viewBox="0 0 16 16" version="1.1" width="16" height="16" aria-hidden="true"><path d="m7.775 3.275 1.25-1.25a3.5 3.5 0 1 1 4.95 4.95l-2.5 2.5a3.5 3.5 0 0 1-4.95 0 .751.751 0 0 1 .018-1.042.751.751 0 0 1 1.042-.018 1.998 1.998 0 0 0 2.83 0l2.5-2.5a2.002 2.002 0 0 0-2.83-2.83l-1.25 1.25a.751.751 0 0 1-1.042-.018.751.751 0 0 1-.018-1.042Zm-4.69 9.64a1.998 1.998 0 0 0 2.83 0l1.25-1.25a.751.751 0 0 1 1.042.018.751.751 0 0 1 .018 1.042l-1.25 1.25a3.5 3.5 0 1 1-4.95-4.95l2.5-2.5a3.5 3.5 0 0 1 4.95 0 .751.751 0 0 1-.018 1.042.751.751 0 0 1-1.042.018 1.998 1.998 0 0 0-2.83 0l-2.5 2.5a1.998 1.998 0 0 0 0 2.83Z"></path></svg></a><font style="vertical-align: inherit;"><font style="vertical-align: inherit;">其他</font></font></h3>
+<p dir="auto"><font style="vertical-align: inherit;"><font style="vertical-align: inherit;">ToaruOS 已在真实硬件上成功测试。如果本机 BIOS 或 EFI 加载程序无法运行，请尝试使用 Grub 引导。 ToaruOS 符合“Multiboot”和“Multiboot 2”规范，因此可以使用</font></font><code>multiboot</code><font style="vertical-align: inherit;"><font style="vertical-align: inherit;">或命令</font><font style="vertical-align: inherit;">加载它，</font></font><code>multiboot2</code><font style="vertical-align: inherit;"><font style="vertical-align: inherit;">如下所示：</font></font></p>
+<div class="snippet-clipboard-content notranslate position-relative overflow-auto"><pre class="notranslate"><code>multiboot2 /path/to/misaka-kernel root=/dev/ram0 migrate vid=auto start=live-session
 module2 /path/to/ramdisk.igz
 set gfxpayload=keep
-```
-
-![Native photo](https://klange.dev/s/IMG_8387.jpg)
-*ToaruOS running natively from a USB stick on a ThinkPad T410.*
-
-## License
-
-All first-party parts of ToaruOS are made available under the terms of the University of Illinois / NCSA License, which is a BSD-style permissive license.
-Unless otherwise specified, this is the original and only license for all files in this repository - just because a file does not have a copyright header does not mean it isn't under this license.
-ToaruOS is intended as an educational reference, and I encourage the use of my code, but please be sure you follow the requirements of the license.
-You may redistribute code under the NCSA license, as well as make modifications to the code and sublicense it under other terms (such as the GPL, or a proprietary license), but you must always include the copyright notice specified in the license as well as make the full text of the license (it's only a couple paragraphs) available to end-users.
-
-While most of ToaruOS is written entirely by myself, be sure to include other authors where relevant, such as with [Mike's audio subsystem](https://github.com/klange/toaruos/blob/master/kernel/audio/snd.c) or [Dale's string functions](https://github.com/klange/toaruos/blob/master/kernel/misc/string.c).
-
-Some components of ToaruOS, such as [Kuroko](https://github.com/kuroko-lang/kuroko/blob/9f6160092ecece0f2c18b63c066151cbe0ded1bb/LICENSE) or [bim](https://github.com/klange/toaruos/blob/master/apps/bim.c#L3) have different but compatible terms.
-
-## Community
-
-### Mirrors
-
-ToaruOS is regularly mirrored to multiple Git hosting sites.
-
-- Gitlab: [toaruos/toaruos](https://gitlab.com/toaruos/toaruos)
-- GitHub: [klange/toaruos](https://github.com/klange/toaruos)
-- Bitbucket: [klange/toaruos](https://bitbucket.org/klange/toaruos)
-- ToaruOS.org: [klange/toaruos](https://git.toaruos.org/klange/toaruos)
-
-### IRC
-
-`#toaruos` on Libera (`irc.libera.chat`)
-
-## FAQs
-
-### Is ToaruOS self-hosting?
-
-Individual applications and libraries can be built by installing the `build-essential` metapackage from the repository, which will pull in `gcc` and `binutils`.
-Sources are available in the `/src` directory on the live CD in a similar layout to this repository, and the `auto-dep.krk` utility script is also available.
-
-For building ramdisks, finalized kernels, or CD images, some components are currently unavailable.
-In particular, the [build script for ramdisks](util/createramdisk.py) is still written in Python and depends on its `tarfile` module and `zlib` support.
-Previously, with a capable compiler toolchain, ToaruOS 1.x was able to build its own kernel, userspace, libraries, and bootloader, and turn these into a working ISO CD image through a Python script that performed a similar function to the Makefile.
-
-ToaruOS is not currently capable of building most of its ports, due to a lack of a proper POSIX shell and Make implementation. These are eventual goals of the project.
-
-### Is ToaruOS a Linux distribution?
-
-No, not at all. There is no code from Linux anywhere in ToaruOS, nor were Linux sources used as a reference material.
-
-ToaruOS is a completely independent project, and all code in this repository - which is the entire codebase of the operating system, including its kernel, bootloaders, libraries, and applications - is original, written by myself and a handful of contributors over the course of ten years.
-The complete source history, going back to when ToaruOS was nothing more than a baremetal "hello world" can be tracked through this git repository.
-
-### When you say "complete"...
-
-ToaruOS is complete in the sense that it covers the whole range of functionality for an OS: It is not "just a kernel" or "just a userspace".
-
-ToaruOS is _not_ complete in the sense of being "done".
-
-### Is ToaruOS POSIX-compliant?
-
-While I aim to support POSIX interfaces well enough for software to be ported, strict implementation of the standard is not a major goal of the OS, and full compliance may even be undesirable.
-
-### Are contributions accepted?
-
-ToaruOS is a personal project, not a community project. Contributions in the form of code should be discussed in advance. Ports and other work outside of the repo, however, are a great way to help out.
-
-You can also help by contributing to [Kuroko](https://github.com/kuroko-lang/kuroko) - which is part of why it's kept as a separate repository.
+</code></pre><div class="zeroclipboard-container">
+    <clipboard-copy aria-label="Copy" class="ClipboardButton btn btn-invisible js-clipboard-copy m-2 p-0 tooltipped-no-delay d-flex flex-justify-center flex-items-center" data-copy-feedback="Copied!" data-tooltip-direction="w" value="multiboot2 /path/to/misaka-kernel root=/dev/ram0 migrate vid=auto start=live-session
+module2 /path/to/ramdisk.igz
+set gfxpayload=keep" tabindex="0" role="button">
+      <svg aria-hidden="true" height="16" viewBox="0 0 16 16" version="1.1" width="16" data-view-component="true" class="octicon octicon-copy js-clipboard-copy-icon">
+    <path d="M0 6.75C0 5.784.784 5 1.75 5h1.5a.75.75 0 0 1 0 1.5h-1.5a.25.25 0 0 0-.25.25v7.5c0 .138.112.25.25.25h7.5a.25.25 0 0 0 .25-.25v-1.5a.75.75 0 0 1 1.5 0v1.5A1.75 1.75 0 0 1 9.25 16h-7.5A1.75 1.75 0 0 1 0 14.25Z"></path><path d="M5 1.75C5 .784 5.784 0 6.75 0h7.5C15.216 0 16 .784 16 1.75v7.5A1.75 1.75 0 0 1 14.25 11h-7.5A1.75 1.75 0 0 1 5 9.25Zm1.75-.25a.25.25 0 0 0-.25.25v7.5c0 .138.112.25.25.25h7.5a.25.25 0 0 0 .25-.25v-7.5a.25.25 0 0 0-.25-.25Z"></path>
+</svg>
+      <svg aria-hidden="true" height="16" viewBox="0 0 16 16" version="1.1" width="16" data-view-component="true" class="octicon octicon-check js-clipboard-check-icon color-fg-success d-none">
+    <path d="M13.78 4.22a.75.75 0 0 1 0 1.06l-7.25 7.25a.75.75 0 0 1-1.06 0L2.22 9.28a.751.751 0 0 1 .018-1.042.751.751 0 0 1 1.042-.018L6 10.94l6.72-6.72a.75.75 0 0 1 1.06 0Z"></path>
+</svg>
+    </clipboard-copy>
+  </div></div>
+<p dir="auto"><a target="_blank" rel="noopener noreferrer nofollow" href="https://camo.githubusercontent.com/2552a42e88b8a95cddfd3c501b67e00302636438673d26f458310f0e4f3f8128/68747470733a2f2f6b6c616e67652e6465762f732f494d475f383338372e6a7067"><img src="https://camo.githubusercontent.com/2552a42e88b8a95cddfd3c501b67e00302636438673d26f458310f0e4f3f8128/68747470733a2f2f6b6c616e67652e6465762f732f494d475f383338372e6a7067" alt="原生照片" data-canonical-src="https://klange.dev/s/IMG_8387.jpg" style="max-width: 100%;"></a>
+<em><font style="vertical-align: inherit;"><font style="vertical-align: inherit;">ToaruOS 从 ThinkPad T410 上的 USB 记忆棒本地运行。</font></font></em></p>
+<h2 tabindex="-1" dir="auto"><a id="user-content-license" class="anchor" aria-hidden="true" tabindex="-1" href="#license"><svg class="octicon octicon-link" viewBox="0 0 16 16" version="1.1" width="16" height="16" aria-hidden="true"><path d="m7.775 3.275 1.25-1.25a3.5 3.5 0 1 1 4.95 4.95l-2.5 2.5a3.5 3.5 0 0 1-4.95 0 .751.751 0 0 1 .018-1.042.751.751 0 0 1 1.042-.018 1.998 1.998 0 0 0 2.83 0l2.5-2.5a2.002 2.002 0 0 0-2.83-2.83l-1.25 1.25a.751.751 0 0 1-1.042-.018.751.751 0 0 1-.018-1.042Zm-4.69 9.64a1.998 1.998 0 0 0 2.83 0l1.25-1.25a.751.751 0 0 1 1.042.018.751.751 0 0 1 .018 1.042l-1.25 1.25a3.5 3.5 0 1 1-4.95-4.95l2.5-2.5a3.5 3.5 0 0 1 4.95 0 .751.751 0 0 1-.018 1.042.751.751 0 0 1-1.042.018 1.998 1.998 0 0 0-2.83 0l-2.5 2.5a1.998 1.998 0 0 0 0 2.83Z"></path></svg></a><font style="vertical-align: inherit;"><font style="vertical-align: inherit;">执照</font></font></h2>
+<p dir="auto"><font style="vertical-align: inherit;"><font style="vertical-align: inherit;">ToaruOS 的所有第一方部分均根据伊利诺伊大学/NCSA 许可证的条款提供，该许可证是 BSD 风格的许可许可证。除非另有说明，否则这是此存储库中所有文件的原始且唯一的许可证 - 仅仅因为文件没有版权标头并不意味着它不在该许可证之下。 ToaruOS 旨在作为教育参考，我鼓励使用我的代码，但请确保遵循许可证的要求。您可以根据 NCSA 许可证重新分发代码，也可以对代码进行修改并根据其他条款（例如 GPL 或专有许可证）对其进行再许可，但您必须始终包含许可证中指定的版权声明以及向最终用户提供许可证的全文（只有几个段落）。</font></font></p>
+<p dir="auto"><font style="vertical-align: inherit;"><font style="vertical-align: inherit;">虽然 ToaruOS 的大部分内容完全由我自己编写，但请务必包含相关的其他作者，例如</font></font><a href="https://github.com/klange/toaruos/blob/master/kernel/audio/snd.c"><font style="vertical-align: inherit;"><font style="vertical-align: inherit;">Mike 的音频子系统</font></font></a><font style="vertical-align: inherit;"><font style="vertical-align: inherit;">或</font></font><a href="https://github.com/klange/toaruos/blob/master/kernel/misc/string.c"><font style="vertical-align: inherit;"><font style="vertical-align: inherit;">Dale 的字符串函数</font></font></a><font style="vertical-align: inherit;"><font style="vertical-align: inherit;">。</font></font></p>
+<p dir="auto"><font style="vertical-align: inherit;"><font style="vertical-align: inherit;">ToaruOS 的某些组件（例如</font></font><a href="https://github.com/kuroko-lang/kuroko/blob/9f6160092ecece0f2c18b63c066151cbe0ded1bb/LICENSE"><font style="vertical-align: inherit;"><font style="vertical-align: inherit;">Kuroko</font></font></a><font style="vertical-align: inherit;"><font style="vertical-align: inherit;">或</font></font><a href="https://github.com/klange/toaruos/blob/master/apps/bim.c#L3"><font style="vertical-align: inherit;"><font style="vertical-align: inherit;">bim）</font></font></a><font style="vertical-align: inherit;"><font style="vertical-align: inherit;">具有不同但兼容的术语。</font></font></p>
+<h2 tabindex="-1" dir="auto"><a id="user-content-community" class="anchor" aria-hidden="true" tabindex="-1" href="#community"><svg class="octicon octicon-link" viewBox="0 0 16 16" version="1.1" width="16" height="16" aria-hidden="true"><path d="m7.775 3.275 1.25-1.25a3.5 3.5 0 1 1 4.95 4.95l-2.5 2.5a3.5 3.5 0 0 1-4.95 0 .751.751 0 0 1 .018-1.042.751.751 0 0 1 1.042-.018 1.998 1.998 0 0 0 2.83 0l2.5-2.5a2.002 2.002 0 0 0-2.83-2.83l-1.25 1.25a.751.751 0 0 1-1.042-.018.751.751 0 0 1-.018-1.042Zm-4.69 9.64a1.998 1.998 0 0 0 2.83 0l1.25-1.25a.751.751 0 0 1 1.042.018.751.751 0 0 1 .018 1.042l-1.25 1.25a3.5 3.5 0 1 1-4.95-4.95l2.5-2.5a3.5 3.5 0 0 1 4.95 0 .751.751 0 0 1-.018 1.042.751.751 0 0 1-1.042.018 1.998 1.998 0 0 0-2.83 0l-2.5 2.5a1.998 1.998 0 0 0 0 2.83Z"></path></svg></a><font style="vertical-align: inherit;"><font style="vertical-align: inherit;">社区</font></font></h2>
+<h3 tabindex="-1" dir="auto"><a id="user-content-mirrors" class="anchor" aria-hidden="true" tabindex="-1" href="#mirrors"><svg class="octicon octicon-link" viewBox="0 0 16 16" version="1.1" width="16" height="16" aria-hidden="true"><path d="m7.775 3.275 1.25-1.25a3.5 3.5 0 1 1 4.95 4.95l-2.5 2.5a3.5 3.5 0 0 1-4.95 0 .751.751 0 0 1 .018-1.042.751.751 0 0 1 1.042-.018 1.998 1.998 0 0 0 2.83 0l2.5-2.5a2.002 2.002 0 0 0-2.83-2.83l-1.25 1.25a.751.751 0 0 1-1.042-.018.751.751 0 0 1-.018-1.042Zm-4.69 9.64a1.998 1.998 0 0 0 2.83 0l1.25-1.25a.751.751 0 0 1 1.042.018.751.751 0 0 1 .018 1.042l-1.25 1.25a3.5 3.5 0 1 1-4.95-4.95l2.5-2.5a3.5 3.5 0 0 1 4.95 0 .751.751 0 0 1-.018 1.042.751.751 0 0 1-1.042.018 1.998 1.998 0 0 0-2.83 0l-2.5 2.5a1.998 1.998 0 0 0 0 2.83Z"></path></svg></a><font style="vertical-align: inherit;"><font style="vertical-align: inherit;">镜子</font></font></h3>
+<p dir="auto"><font style="vertical-align: inherit;"><font style="vertical-align: inherit;">ToaruOS 定期镜像到多个 Git 托管站点。</font></font></p>
+<ul dir="auto">
+<li><font style="vertical-align: inherit;"><font style="vertical-align: inherit;">Gitlab：</font></font><a href="https://gitlab.com/toaruos/toaruos" rel="nofollow"><font style="vertical-align: inherit;"><font style="vertical-align: inherit;">toaruos/toaruos</font></font></a></li>
+<li><font style="vertical-align: inherit;"><font style="vertical-align: inherit;">GitHub: </font></font><a href="https://github.com/klange/toaruos"><font style="vertical-align: inherit;"><font style="vertical-align: inherit;">klange/toaruos</font></font></a></li>
+<li><font style="vertical-align: inherit;"><font style="vertical-align: inherit;">Bitbucket：</font></font><a href="https://bitbucket.org/klange/toaruos" rel="nofollow"><font style="vertical-align: inherit;"><font style="vertical-align: inherit;">klange/toaruos</font></font></a></li>
+<li><font style="vertical-align: inherit;"><font style="vertical-align: inherit;">ToaruOS.org：klange/toaruos </font></font><a href="https://git.toaruos.org/klange/toaruos" rel="nofollow"><font style="vertical-align: inherit;"><font style="vertical-align: inherit;">_</font></font></a></li>
+</ul>
+<h3 tabindex="-1" dir="auto"><a id="user-content-irc" class="anchor" aria-hidden="true" tabindex="-1" href="#irc"><svg class="octicon octicon-link" viewBox="0 0 16 16" version="1.1" width="16" height="16" aria-hidden="true"><path d="m7.775 3.275 1.25-1.25a3.5 3.5 0 1 1 4.95 4.95l-2.5 2.5a3.5 3.5 0 0 1-4.95 0 .751.751 0 0 1 .018-1.042.751.751 0 0 1 1.042-.018 1.998 1.998 0 0 0 2.83 0l2.5-2.5a2.002 2.002 0 0 0-2.83-2.83l-1.25 1.25a.751.751 0 0 1-1.042-.018.751.751 0 0 1-.018-1.042Zm-4.69 9.64a1.998 1.998 0 0 0 2.83 0l1.25-1.25a.751.751 0 0 1 1.042.018.751.751 0 0 1 .018 1.042l-1.25 1.25a3.5 3.5 0 1 1-4.95-4.95l2.5-2.5a3.5 3.5 0 0 1 4.95 0 .751.751 0 0 1-.018 1.042.751.751 0 0 1-1.042.018 1.998 1.998 0 0 0-2.83 0l-2.5 2.5a1.998 1.998 0 0 0 0 2.83Z"></path></svg></a><font style="vertical-align: inherit;"><font style="vertical-align: inherit;">IRC</font></font></h3>
+<p dir="auto"><code>#toaruos</code><font style="vertical-align: inherit;"><font style="vertical-align: inherit;">关于利贝拉 ( </font></font><code>irc.libera.chat</code><font style="vertical-align: inherit;"><font style="vertical-align: inherit;">)</font></font></p>
+<h2 tabindex="-1" dir="auto"><a id="user-content-faqs" class="anchor" aria-hidden="true" tabindex="-1" href="#faqs"><svg class="octicon octicon-link" viewBox="0 0 16 16" version="1.1" width="16" height="16" aria-hidden="true"><path d="m7.775 3.275 1.25-1.25a3.5 3.5 0 1 1 4.95 4.95l-2.5 2.5a3.5 3.5 0 0 1-4.95 0 .751.751 0 0 1 .018-1.042.751.751 0 0 1 1.042-.018 1.998 1.998 0 0 0 2.83 0l2.5-2.5a2.002 2.002 0 0 0-2.83-2.83l-1.25 1.25a.751.751 0 0 1-1.042-.018.751.751 0 0 1-.018-1.042Zm-4.69 9.64a1.998 1.998 0 0 0 2.83 0l1.25-1.25a.751.751 0 0 1 1.042.018.751.751 0 0 1 .018 1.042l-1.25 1.25a3.5 3.5 0 1 1-4.95-4.95l2.5-2.5a3.5 3.5 0 0 1 4.95 0 .751.751 0 0 1-.018 1.042.751.751 0 0 1-1.042.018 1.998 1.998 0 0 0-2.83 0l-2.5 2.5a1.998 1.998 0 0 0 0 2.83Z"></path></svg></a><font style="vertical-align: inherit;"><font style="vertical-align: inherit;">常见问题解答</font></font></h2>
+<h3 tabindex="-1" dir="auto"><a id="user-content-is-toaruos-self-hosting" class="anchor" aria-hidden="true" tabindex="-1" href="#is-toaruos-self-hosting"><svg class="octicon octicon-link" viewBox="0 0 16 16" version="1.1" width="16" height="16" aria-hidden="true"><path d="m7.775 3.275 1.25-1.25a3.5 3.5 0 1 1 4.95 4.95l-2.5 2.5a3.5 3.5 0 0 1-4.95 0 .751.751 0 0 1 .018-1.042.751.751 0 0 1 1.042-.018 1.998 1.998 0 0 0 2.83 0l2.5-2.5a2.002 2.002 0 0 0-2.83-2.83l-1.25 1.25a.751.751 0 0 1-1.042-.018.751.751 0 0 1-.018-1.042Zm-4.69 9.64a1.998 1.998 0 0 0 2.83 0l1.25-1.25a.751.751 0 0 1 1.042.018.751.751 0 0 1 .018 1.042l-1.25 1.25a3.5 3.5 0 1 1-4.95-4.95l2.5-2.5a3.5 3.5 0 0 1 4.95 0 .751.751 0 0 1-.018 1.042.751.751 0 0 1-1.042.018 1.998 1.998 0 0 0-2.83 0l-2.5 2.5a1.998 1.998 0 0 0 0 2.83Z"></path></svg></a><font style="vertical-align: inherit;"><font style="vertical-align: inherit;">ToaruOS 是自托管的吗？</font></font></h3>
+<p dir="auto"><font style="vertical-align: inherit;"><font style="vertical-align: inherit;">可以通过</font></font><code>build-essential</code><font style="vertical-align: inherit;"><font style="vertical-align: inherit;">从存储库安装元包来构建单独的应用程序和库，这将拉入</font></font><code>gcc</code><font style="vertical-align: inherit;"><font style="vertical-align: inherit;">和</font></font><code>binutils</code><font style="vertical-align: inherit;"><font style="vertical-align: inherit;">. Live CD 上的目录</font><font style="vertical-align: inherit;">中提供了源代码，</font></font><code>/src</code><font style="vertical-align: inherit;"><font style="vertical-align: inherit;">其布局与此存储库类似，并且</font></font><code>auto-dep.krk</code><font style="vertical-align: inherit;"><font style="vertical-align: inherit;">还提供了实用程序脚本。</font></font></p>
+<p dir="auto"><font style="vertical-align: inherit;"><font style="vertical-align: inherit;">对于构建 ramdisk、最终内核或 CD 映像，某些组件当前不可用。特别是，</font></font><a href="/klange/toaruos/blob/master/util/createramdisk.py"><font style="vertical-align: inherit;"><font style="vertical-align: inherit;">ramdisk 的构建脚本</font></font></a><font style="vertical-align: inherit;"><font style="vertical-align: inherit;">仍然是用 Python 编写的，并且依赖于它的</font></font><code>tarfile</code><font style="vertical-align: inherit;"><font style="vertical-align: inherit;">模块和</font></font><code>zlib</code><font style="vertical-align: inherit;"><font style="vertical-align: inherit;">支持。此前，借助功能强大的编译器工具链，ToaruOS 1.x 能够构建自己的内核、用户空间、库和引导加载程序，并通过执行与 Makefile 类似功能的 Python 脚本将它们转换为可用的 ISO CD 映像。</font></font></p>
+<p dir="auto"><font style="vertical-align: inherit;"><font style="vertical-align: inherit;">由于缺乏适当的 POSIX shell 和 Make 实现，ToaruOS 目前无法构建其大部分端口。这些是该项目的最终目标。</font></font></p>
+<h3 tabindex="-1" dir="auto"><a id="user-content-is-toaruos-a-linux-distribution" class="anchor" aria-hidden="true" tabindex="-1" href="#is-toaruos-a-linux-distribution"><svg class="octicon octicon-link" viewBox="0 0 16 16" version="1.1" width="16" height="16" aria-hidden="true"><path d="m7.775 3.275 1.25-1.25a3.5 3.5 0 1 1 4.95 4.95l-2.5 2.5a3.5 3.5 0 0 1-4.95 0 .751.751 0 0 1 .018-1.042.751.751 0 0 1 1.042-.018 1.998 1.998 0 0 0 2.83 0l2.5-2.5a2.002 2.002 0 0 0-2.83-2.83l-1.25 1.25a.751.751 0 0 1-1.042-.018.751.751 0 0 1-.018-1.042Zm-4.69 9.64a1.998 1.998 0 0 0 2.83 0l1.25-1.25a.751.751 0 0 1 1.042.018.751.751 0 0 1 .018 1.042l-1.25 1.25a3.5 3.5 0 1 1-4.95-4.95l2.5-2.5a3.5 3.5 0 0 1 4.95 0 .751.751 0 0 1-.018 1.042.751.751 0 0 1-1.042.018 1.998 1.998 0 0 0-2.83 0l-2.5 2.5a1.998 1.998 0 0 0 0 2.83Z"></path></svg></a><font style="vertical-align: inherit;"><font style="vertical-align: inherit;">ToaruOS 是 Linux 发行版吗？</font></font></h3>
+<p dir="auto"><font style="vertical-align: inherit;"><font style="vertical-align: inherit;">一点都不。 ToaruOS 中没有任何来自 Linux 的代码，也没有使用 Linux 源代码作为参考材料。</font></font></p>
+<p dir="auto"><font style="vertical-align: inherit;"><font style="vertical-align: inherit;">ToaruOS 是一个完全独立的项目，该存储库中的所有代码（即操作系统的整个代码库，包括其内核、引导加载程序、库和应用程序）都是原创的，由我自己和少数贡献者在整个过程中编写。十年。完整的源历史记录，可以追溯到 ToaruOS 只是一个裸机“hello world”的时候，可以通过这个 git 存储库进行跟踪。</font></font></p>
+<h3 tabindex="-1" dir="auto"><a id="user-content-when-you-say-complete" class="anchor" aria-hidden="true" tabindex="-1" href="#when-you-say-complete"><svg class="octicon octicon-link" viewBox="0 0 16 16" version="1.1" width="16" height="16" aria-hidden="true"><path d="m7.775 3.275 1.25-1.25a3.5 3.5 0 1 1 4.95 4.95l-2.5 2.5a3.5 3.5 0 0 1-4.95 0 .751.751 0 0 1 .018-1.042.751.751 0 0 1 1.042-.018 1.998 1.998 0 0 0 2.83 0l2.5-2.5a2.002 2.002 0 0 0-2.83-2.83l-1.25 1.25a.751.751 0 0 1-1.042-.018.751.751 0 0 1-.018-1.042Zm-4.69 9.64a1.998 1.998 0 0 0 2.83 0l1.25-1.25a.751.751 0 0 1 1.042.018.751.751 0 0 1 .018 1.042l-1.25 1.25a3.5 3.5 0 1 1-4.95-4.95l2.5-2.5a3.5 3.5 0 0 1 4.95 0 .751.751 0 0 1-.018 1.042.751.751 0 0 1-1.042.018 1.998 1.998 0 0 0-2.83 0l-2.5 2.5a1.998 1.998 0 0 0 0 2.83Z"></path></svg></a><font style="vertical-align: inherit;"><font style="vertical-align: inherit;">当你说“完成”时...</font></font></h3>
+<p dir="auto"><font style="vertical-align: inherit;"><font style="vertical-align: inherit;">ToaruOS 是完整的，因为它涵盖了操作系统的全部功能：它不仅仅是“只是一个内核”或“只是一个用户空间”。</font></font></p>
+<p dir="auto"><font style="vertical-align: inherit;"><font style="vertical-align: inherit;">从“完成”的意义上来说，</font><font style="vertical-align: inherit;">ToaruOS 并不</font></font><em><font style="vertical-align: inherit;"><font style="vertical-align: inherit;">完整。</font></font></em><font style="vertical-align: inherit;"></font></p>
+<h3 tabindex="-1" dir="auto"><a id="user-content-is-toaruos-posix-compliant" class="anchor" aria-hidden="true" tabindex="-1" href="#is-toaruos-posix-compliant"><svg class="octicon octicon-link" viewBox="0 0 16 16" version="1.1" width="16" height="16" aria-hidden="true"><path d="m7.775 3.275 1.25-1.25a3.5 3.5 0 1 1 4.95 4.95l-2.5 2.5a3.5 3.5 0 0 1-4.95 0 .751.751 0 0 1 .018-1.042.751.751 0 0 1 1.042-.018 1.998 1.998 0 0 0 2.83 0l2.5-2.5a2.002 2.002 0 0 0-2.83-2.83l-1.25 1.25a.751.751 0 0 1-1.042-.018.751.751 0 0 1-.018-1.042Zm-4.69 9.64a1.998 1.998 0 0 0 2.83 0l1.25-1.25a.751.751 0 0 1 1.042.018.751.751 0 0 1 .018 1.042l-1.25 1.25a3.5 3.5 0 1 1-4.95-4.95l2.5-2.5a3.5 3.5 0 0 1 4.95 0 .751.751 0 0 1-.018 1.042.751.751 0 0 1-1.042.018 1.998 1.998 0 0 0-2.83 0l-2.5 2.5a1.998 1.998 0 0 0 0 2.83Z"></path></svg></a><font style="vertical-align: inherit;"><font style="vertical-align: inherit;">ToaruOS 是否兼容 POSIX？</font></font></h3>
+<p dir="auto"><font style="vertical-align: inherit;"><font style="vertical-align: inherit;">虽然我的目标是足够好地支持 POSIX 接口以便软件移植，但严格执行该标准并不是操作系统的主要目标，甚至完全合规可能也是不可取的。</font></font></p>
+<h3 tabindex="-1" dir="auto"><a id="user-content-are-contributions-accepted" class="anchor" aria-hidden="true" tabindex="-1" href="#are-contributions-accepted"><svg class="octicon octicon-link" viewBox="0 0 16 16" version="1.1" width="16" height="16" aria-hidden="true"><path d="m7.775 3.275 1.25-1.25a3.5 3.5 0 1 1 4.95 4.95l-2.5 2.5a3.5 3.5 0 0 1-4.95 0 .751.751 0 0 1 .018-1.042.751.751 0 0 1 1.042-.018 1.998 1.998 0 0 0 2.83 0l2.5-2.5a2.002 2.002 0 0 0-2.83-2.83l-1.25 1.25a.751.751 0 0 1-1.042-.018.751.751 0 0 1-.018-1.042Zm-4.69 9.64a1.998 1.998 0 0 0 2.83 0l1.25-1.25a.751.751 0 0 1 1.042.018.751.751 0 0 1 .018 1.042l-1.25 1.25a3.5 3.5 0 1 1-4.95-4.95l2.5-2.5a3.5 3.5 0 0 1 4.95 0 .751.751 0 0 1-.018 1.042.751.751 0 0 1-1.042.018 1.998 1.998 0 0 0-2.83 0l-2.5 2.5a1.998 1.998 0 0 0 0 2.83Z"></path></svg></a><font style="vertical-align: inherit;"><font style="vertical-align: inherit;">捐款是否被接受？</font></font></h3>
+<p dir="auto"><font style="vertical-align: inherit;"><font style="vertical-align: inherit;">ToaruOS 是个人项目，而不是社区项目。应事先讨论以代码形式做出的贡献。然而，存储库之外的端口和其他工作是提供帮助的好方法。</font></font></p>
+<p dir="auto"><font style="vertical-align: inherit;"><font style="vertical-align: inherit;">您还可以通过向</font></font><a href="https://github.com/kuroko-lang/kuroko"><font style="vertical-align: inherit;"><font style="vertical-align: inherit;">Kuroko</font></font></a><font style="vertical-align: inherit;"><font style="vertical-align: inherit;">做出贡献来提供帮助- 这就是它被保留为单独存储库的部分原因。</font></font></p>
+</article></div>
